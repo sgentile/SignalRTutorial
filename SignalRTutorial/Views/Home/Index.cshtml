@@ -1,0 +1,187 @@
+﻿@{
+    ViewBag.Title = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<style>
+    div.growlUI h1, div.growlUI h2 {
+        color: white; 
+        /*padding: 5px 5px 5px 75px; 
+        text-align: left*/
+    }
+    div.growlUI h1 {
+        font-size: large;
+    }
+    div.growlUI h2 {
+        font-size: medium;
+    }
+</style>
+<div>
+    <form data-bind="submit:addStory">
+        <fieldset>
+            <legend>add new story</legend>
+            <p>
+                <label>Title:</label>
+                <input id="title" placeholder="title" data-bind="value: title" />
+            </p>
+            <p>
+                <label>Description:</label>
+                <input id="description" placeholder="description" data-bind="value: description" />
+            </p>
+            <input class="btn btn-primary" type="submit" value="Add Story" />
+        </fieldset>
+    </form>
+</div>
+
+<table id="stories" class="table table-striped">
+    <thead>
+        <tr>
+            <th>Action</th>
+            <th>Id</th>
+            <th>Title</th>
+            <th>Description</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody data-bind="foreach: stories">
+        <tr>
+            <td>
+                <!-- ko if: EditMode() === false -->
+                <button class="btn btn-danger" data-bind="click:$parent.deleteStory">Delete</button>                
+                <button class="btn" data-bind="click: $parent.editStory">Edit</button>
+                <!-- /ko -->
+                <!-- ko if: EditMode() === true -->
+                <button class="btn btn-primary" data-bind="click: $parent.saveStory">Save</button>
+                <button class="btn" data-bind="click: $parent.cancelEditStory">Cancel</button>
+                <!-- /ko -->
+            </td>
+            <!-- ko if: EditMode() === false -->
+            <td data-bind="text:Id"></td>
+            <td data-bind="text: Title"></td>
+            <td data-bind="text: Description"></td>
+            <td data-bind="text: StateDescription"></td>
+            <!-- /ko -->
+            
+            <!-- ko if: EditMode() === true -->
+            <td data-bind="text:Id"></td>
+            <td><input data-bind="value: Title"/></td>
+            <td><input data-bind="value: Description"/></td>
+            <td><select data-bind="options: $parent.States, optionsText: 'text', optionsValue: 'id', value: State"></select></td>
+            <!-- /ko -->
+        </tr>
+    </tbody>
+</table>
+
+
+<script type="text/javascript">
+    $(function () {
+        var states = [{ id: 0, text: "Todo" }, { id: 1, text: "InProgress" }, { id: 2, text: "Verify" }, { id: 3, text: "Done" }];
+        
+        function Story(id, title, description, state) {
+            var self = this;
+            this.Id = ko.observable(id);
+            this.Title = ko.observable(title);
+            this.Description = ko.observable(description);
+            this.State = ko.observable(state);
+            this.StateDescription = ko.computed(function () {
+                var result = $.grep(states, function(e) {
+                    return e.id === self.State();
+                });
+                if (result) {
+                    return result[0].text;
+                }
+            }, this);
+            this.EditMode = ko.observable(false);
+        }
+
+
+        function ScrumBoard() {
+            var self = this;
+            self.title = ko.observable("");
+            self.description = ko.observable("");
+
+            self.stories = ko.observableArray([]);
+            self.States = ko.observableArray(states);
+            self.hub = $.connection.scrumBoardHub;
+
+            self.init = function () {
+
+                self.hub.server.getStories();
+            };
+
+            self.createStory = function (story) {
+                return new Story(story.Id, story.Title, story.Description, story.State);
+            };
+
+            self.addStory = function (newStory) {
+                var story = { "title": self.title(), "description": self.description(), "state": "todo" };
+                self.hub.server.createStory(story);
+                self.title("");
+                self.description("");
+            };
+
+            self.editStory = function (story) {                
+                story.EditMode(true);
+            };
+
+            self.saveStory = function (story) {
+                debugger;
+                var result = ko.mapping.toJS(story);
+                self.hub.server.updateStory(result);
+                story.EditMode(false);
+            };
+
+            self.cancelEditStory = function (story) {
+                if (confirm("Are you sure you want to cancel ?")) {
+                    story.EditMode(false);
+                }
+            };
+
+            self.deleteStory = function (story) {
+                if (confirm("Are you sure you want to delete this story?")) {
+                    self.hub.server.removeStory(story.Id());
+                }
+            };
+
+            self.hub.client.addedStory = function (newStory) {
+                $.growlUI('Story Added', newStory.Title + ' has been created');
+                self.stories.push(self.createStory(newStory));
+            };
+
+            self.hub.client.storyUpdated = function (story) {
+                $.growlUI('Update Completed', story.Title + ' has been updated');
+            };
+
+            self.hub.client.populateStories = function (stories) {
+                var mappedStories = $.map(stories, function (story) {
+                    return self.createStory(story);
+                });
+
+                self.stories(mappedStories);
+            };
+
+            self.hub.client.removeStory = function (story) {
+                var match = ko.utils.arrayFirst(self.stories(), function (item) {
+                    return story.Id === item.Id();
+                });
+
+                if (match) {
+                    $.growlUI('Delete Completed', match.Title() + ' has been removed');
+                    self.stories.remove(match);
+                }
+            };
+
+        };
+
+        var scrumBoard = new ScrumBoard();
+        $.connection.hub.start(function () {
+            scrumBoard.init();
+        });
+        ko.applyBindings(scrumBoard);
+
+        //$("#stories").delegate('.remove', 'click', function () {
+        //    var context = ko.contextFor(this),
+        //        story = context.$data;
+        //});
+    });
+</script>
+
