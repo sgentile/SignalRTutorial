@@ -1,0 +1,6 @@
+*.pdb
+*.suo
+obj/
+bin/
+packages/
+/SignalRTutorial/SignalRTutorial.csproj.user
